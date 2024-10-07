@@ -5,6 +5,7 @@ import lombok.Setter;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
+import java.util.Date;
 import java.util.List;
 
 @Getter
@@ -19,4 +20,6 @@ public class PageEntity {
     private String content;
 
     private List<String> links;
+
+    private Date createdAt;
 }

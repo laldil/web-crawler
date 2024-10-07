@@ -1,7 +1,11 @@
 package kz.edu.astanait.web_crawler.service.impl;
 
+import kz.edu.astanait.web_crawler.dto.PageDto;
+import kz.edu.astanait.web_crawler.model.PageEntity;
 import kz.edu.astanait.web_crawler.service.CrawlerService;
 import kz.edu.astanait.web_crawler.service.HtmlParserService;
+import kz.edu.astanait.web_crawler.service.IndexService;
+import kz.edu.astanait.web_crawler.service.PageService;
 import kz.edu.astanait.web_crawler.utils.WebGraph;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,33 +23,58 @@ import java.util.Set;
 public class CrawlerServiceImpl implements CrawlerService {
 
     private final HtmlParserService htmlParserService;
+    private final PageService pageService;
+    private final IndexService indexService;
 
     @Async
-    @Override
-    public void crawl(String url) {
+    public void crawl(int maxPages) {
+        var page = pageService.getLastPage();
+        crawl(page.getUrl(), maxPages);
+    }
+
+    @Async
+    public void crawl(String startUrl, int maxPages) {
         var graph = new WebGraph();
         Queue<String> queue = new LinkedList<>();
         Set<String> visited = new HashSet<>();
 
-        queue.add(url);
-        visited.add(url);
-        graph.addPage(url);
+        queue.add(startUrl);
+        visited.add(startUrl);
+        graph.addPage(startUrl);
 
-        while (!queue.isEmpty()) {
+        while (!queue.isEmpty() && maxPages > 0) {
             var currentUrl = queue.poll();
-            var document = htmlParserService.fetchPage(currentUrl);
-            var links = htmlParserService.extractLinks(document);
 
-            log.info("VISITED: {}. EXTRACTED LINKS: {}", currentUrl, links);
-            log.info("VISITED content: {}", htmlParserService.extractContent(document));
+            try {
+                log.info("VISIT: {}", currentUrl);
+                var document = htmlParserService.fetchPage(currentUrl);
+                var title = htmlParserService.extractTitle(document);
+                var content = htmlParserService.extractContent(document);
+                var links = htmlParserService.extractLinks(document);
 
-            for (var link : links) {
-                if (!visited.contains(link)) {
-                    visited.add(link);
-                    queue.add(link);
-                    graph.addPage(link);
-                    graph.addLink(currentUrl, link);
+                log.info("LINKS: {}", links);
+
+                var pageToSave = PageDto.builder()
+                        .url(currentUrl)
+                        .title(title)
+                        .content(content)
+                        .links(links)
+                        .build();
+                pageService.savePage(pageToSave);
+                indexService.indexPage(pageToSave);
+
+                for (var link : links) {
+                    if (!visited.contains(link)) {
+                        visited.add(link);
+                        queue.add(link);
+                        graph.addPage(link);
+                        graph.addLink(currentUrl, link);
+                    }
                 }
+            } catch (Exception e) {
+                log.error(e.getMessage());
+            } finally {
+                maxPages--;
             }
         }
     }
